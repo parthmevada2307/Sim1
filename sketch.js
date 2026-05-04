@@ -2,11 +2,11 @@ let items = [];
 let beakerContents = [];
 let popUpMessage = "";
 let popUpTimer = 0;
-const popUpDuration = 120; // 120 frames = ~2 seconds at 60fps
+const popUpDuration = 120;
 let liquidImages = {};
 let litmus = {
-  x: 600,
-  y: 200,
+  x: 0,
+  y: 0,
   w: 25,
   h: 100,
   dragging: false,
@@ -23,9 +23,9 @@ let isLitmusInLiquid = false;
 let liquidTopY = 0;
 let liquidBottomY = 0;
 
-const maxLayers = 12; // max layers for pouring
-const liquidHeight = 15; // height per layer
-const maxLiquidHeight = maxLayers * liquidHeight; // max total liquid height
+const maxLayers = 12;
+const liquidHeight = 15;
+const maxLiquidHeight = maxLayers * liquidHeight;
 
 let pouringSound;
 let pourQueue = [];
@@ -35,9 +35,12 @@ let isPouring = false;
 
 let resetButton;
 
+// Layout variables (recalculated on resize)
+let layout = {};
+
 function preload() {
   pouringSound = loadSound('water-pouring-98795.mp3');
-   let imagePaths = {
+  let imagePaths = {
     "Coffee": "coffee.jpg",
     "Apple Juice": "applejuice.jpg",
     "Lemon Juice": "lemonjuice.jpg",
@@ -48,7 +51,7 @@ function preload() {
     "CocaCola": "soda.jpg",
     "Tomato Juice": "tomatojuice1.jpg",
     "Vinegar": "vinegar.jpg",
-     "Water": "water1.jpg"
+    "Water": "water1.jpg"
   };
 
   for (let key in imagePaths) {
@@ -56,55 +59,121 @@ function preload() {
   }
 }
 
+function buildLayout() {
+  let s = min(width, height) / 800;
+  s = max(s, 0.45);
+
+  let leftMargin = max(width * 0.03, 10);
+  let itemSize = max(30 * s, 22);
+  let itemSpacing = max(45 * s, 32);
+  let topMargin = max(130 * s, 100);
+  let fontSize = max(14 * s, 9);
+
+  let beakerCx = max(width * 0.42, leftMargin + 150 * s);
+  let beakerTopY = topMargin + 120 * s;
+  let beakerW = max(120 * s, 70);
+  let beakerH = max(200 * s, 120);
+
+  let litmusInitX = beakerCx + beakerW / 2 + 40 * s;
+  let litmusInitY = beakerTopY;
+  let litmusW = max(25 * s, 15);
+  let litmusH = max(100 * s, 60);
+
+  let meterX = min(width * 0.78, width - 150 * s);
+  let meterY = beakerTopY + beakerH + 80 * s;
+  let meterRadius = max(100 * s, 60);
+
+  let popupX = beakerCx + beakerW / 2 + 180 * s;
+  let popupY = beakerTopY + beakerH / 2;
+
+  layout = {
+    scale: s,
+    leftMargin: leftMargin,
+    topMargin: topMargin,
+    itemSize: itemSize,
+    itemSpacing: itemSpacing,
+    fontSize: fontSize,
+    beakerCx: beakerCx,
+    beakerTopY: beakerTopY,
+    beakerW: beakerW,
+    beakerH: beakerH,
+    litmusInitX: litmusInitX,
+    litmusInitY: litmusInitY,
+    litmusW: litmusW,
+    litmusH: litmusH,
+    meterX: meterX,
+    meterY: meterY,
+    meterRadius: meterRadius,
+    popupX: popupX,
+    popupY: popupY
+  };
+
+  // Rebuild item positions
+  let liquids = [
+    { name: "Coffee", pH: 4.89, color: 'brown' },
+    { name: "Apple Juice", pH: 3.5, color: 'red' },
+    { name: "Lemon Juice", pH: 2.2, color: 'yellow' },
+    { name: "Milk", pH: 6.5, color: '#fffdd0' },
+    { name: "Mouthwash", pH: 9.0, color: '#80dfff' },
+    { name: "Pickle", pH: 3.0, color: 'darkred' },
+    { name: "Soap", pH: 9.5, color: '#b0e0e6' },
+    { name: "CocaCola", pH: 2.5, color: 'black' },
+    { name: "Tomato Juice", pH: 4.2, color: '#ff6347' },
+    { name: "Vinegar", pH: 2.8, color: '#ffb6c1' },
+    { name: "Water", pH: 7, color: 'blue' }
+  ];
+
+  items = [];
+  liquids.forEach(function(item, index) {
+    items.push({
+      name: item.name,
+      pH: item.pH,
+      color: item.color,
+      x: leftMargin,
+      y: topMargin + index * itemSpacing,
+      w: itemSize,
+      h: itemSize
+    });
+  });
+
+  // Update litmus size
+  litmus.w = litmusW;
+  litmus.h = litmusH;
+
+  // Reposition reset button
+  if (resetButton) {
+    resetButton.position(width / 2 - 30, max(90 * s, 70));
+  }
+}
+
 function setup() {
-  createCanvas(800, 800); 
+  createCanvas(windowWidth, windowHeight);
   textFont('Times New Roman');
 
-  let leftMargin = 40;
-  let topMargin = 160;
-  let spacing = 60;
+  buildLayout();
 
-   let liquids = [
-  { name: "Coffee", pH: 4.89, color: 'brown', image: "coffee.jpg" },
-  { name: "Apple Juice", pH: 3.5, color: 'red', image: "applejuice.jpg" },
-  { name: "Lemon Juice", pH: 2.2, color: 'yellow', image: "assets/lemon_juice.png" },
-  { name: "Milk", pH: 6.5, color: '#fffdd0', image: "milk1.jpg" },
-  { name: "Mouthwash", pH: 9.0, color: '#80dfff', image: "assets/mouthwash.png" },
-  { name: "Pickle", pH: 3.0, color: 'darkred', image: "assets/pickle1.png" },
-  { name: "Soap", pH: 9.5, color: '#b0e0e6', image: "assets/soap.png" },
-  { name: "CocaCola", pH: 2.5, color: 'black', image: "assets/soda.png" },
-  { name: "Tomato Juice", pH: 4.2, color: '#ff6347', image: "assets/tomatojuice1.png" },
-  { name: "Vinegar", pH: 2.8, color: '#ffb6c1', image: "assets/vinegar.png" },
-  { name: "Water", pH: 7, color: 'blue', image: "assets/wate1r.jpg" }
-];
+  // Set litmus initial position
+  litmus.x = layout.litmusInitX;
+  litmus.y = layout.litmusInitY;
 
-
-liquids.forEach((item, index) => {
-  items.push({
-    ...item,
-    x: leftMargin,
-    y: topMargin + index * spacing,
-    w: 40,
-    h: 40
-  });
-});
-  // Create Reset button below the learn about text
-  
   resetButton = createButton("Reset");
-  textStyle(BOLD);
-  resetButton.position(width / 2 - resetButton.width / 2, 120);
+  resetButton.position(width / 2 - 30, max(90 * layout.scale, 70));
   resetButton.mousePressed(resetSimulation);
 }
 
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildLayout();
+}
+
 function resetSimulation() {
-  // Reset all variables and states to start fresh
   beakerContents = [];
   pourQueue = [];
   currentPour = null;
   pourProgress = 0;
   isPouring = false;
-  litmus.x = 600;
-  litmus.y = 200;
+  litmus.x = layout.litmusInitX;
+  litmus.y = layout.litmusInitY;
   litmus.dragging = false;
   draggingItem = null;
   litmusPH = null;
@@ -113,52 +182,57 @@ function resetSimulation() {
 
 function draw() {
   background(255);
+
+  let s = layout.scale;
+
+  // Title
   textAlign(CENTER, TOP);
-  textSize(32);
+  textSize(max(32 * s, 18));
   fill(0);
   textStyle(BOLD);
-  text("Stage - 1", width / 2, 20);
+  text("Stage - 1", width / 2, max(20 * s, 10));
 
-  textSize(25);
+  textSize(max(25 * s, 14));
   fill(0);
-  text("Magic Liquids: Acid or Base?", width / 2, 70);
+  text("Magic Liquids: Acid or Base?", width / 2, max(55 * s, 38));
 
-   items.forEach(item => {
-  // Show image if available
-  if (liquidImages[item.name]) {
-    image(liquidImages[item.name], item.x, item.y, item.w, item.h);
-  } else {
-    // fallback color circle
-    fill(item.color);
-    noStroke();
-    ellipse(item.x + item.w / 2, item.y + item.h / 2, item.w, item.h);
-  }
+  // Draw items
+  textStyle(NORMAL);
+  items.forEach(function(item) {
+    if (liquidImages[item.name]) {
+      image(liquidImages[item.name], item.x, item.y, item.w, item.h);
+    } else {
+      fill(item.color);
+      noStroke();
+      ellipse(item.x + item.w / 2, item.y + item.h / 2, item.w, item.h);
+    }
 
-  fill(0);
-  textAlign(LEFT, CENTER);
-  textSize(14);
-  text(item.name, item.x + item.w + 10, item.y + item.h / 2);
-});
+    fill(0);
+    textAlign(LEFT, CENTER);
+    textSize(layout.fontSize);
+    text(item.name, item.x + item.w + 5, item.y + item.h / 2);
+  });
 
-  let cx = 330;
-  let topY = 300;
-  let w = 120;
-  let h = 200;
+  let cx = layout.beakerCx;
+  let topY = layout.beakerTopY;
+  let w = layout.beakerW;
+  let h = layout.beakerH;
 
   drawBeaker(cx, topY, w, h);
 
-  const ellipseHeight = 30;
-  const bottomY = topY + h;
+  let ellipseHeight = 30 * s;
+  let bottomY = topY + h;
 
   liquidTopY = bottomY;
   liquidBottomY = bottomY;
 
-  // Draw mixed liquid color inside beaker
+  let scaledLiquidHeight = liquidHeight * max(s, 0.6);
+
   if (beakerContents.length > 0) {
-    let mixColor = averageColor(beakerContents.map(i => i.color));
+    let mixColor = averageColor(beakerContents.map(function(i) { return i.color; }));
     fill(mixColor);
     noStroke();
-    let totalHeight = beakerContents.length * liquidHeight;
+    let totalHeight = beakerContents.length * scaledLiquidHeight;
     liquidTopY = bottomY - totalHeight - ellipseHeight / 2;
     liquidBottomY = bottomY - ellipseHeight / 2;
     rect(cx - w / 2 + 5, liquidTopY, w - 10, totalHeight);
@@ -166,10 +240,11 @@ function draw() {
 
   drawBeakerMarks(cx, topY, w, h);
 
-  let currentHeight = beakerContents.length * liquidHeight;
+  let currentHeight = beakerContents.length * scaledLiquidHeight;
+  let scaledMaxHeight = maxLayers * scaledLiquidHeight;
 
-  // Start pouring next liquid if not pouring and space available
-  if (!isPouring && pourQueue.length > 0 && currentHeight < maxLiquidHeight) {
+  // Pouring logic
+  if (!isPouring && pourQueue.length > 0 && currentHeight < scaledMaxHeight) {
     currentPour = pourQueue.shift();
     isPouring = true;
     pourProgress = 0;
@@ -177,17 +252,16 @@ function draw() {
   }
 
   if (isPouring && currentPour) {
-    if (currentHeight < maxLiquidHeight) {
+    if (currentHeight < scaledMaxHeight) {
       drawPouringGlass(currentPour, pourProgress);
       pourProgress += 2;
 
-      let layersFilled = floor(pourProgress / liquidHeight);
-
-      if (layersFilled > beakerContents.length && currentHeight < maxLiquidHeight) {
+      let layersFilled = floor(pourProgress / scaledLiquidHeight);
+      if (layersFilled > beakerContents.length && currentHeight < scaledMaxHeight) {
         beakerContents.push(currentPour);
       }
 
-      if (pourProgress >= maxLiquidHeight) {
+      if (pourProgress >= scaledMaxHeight) {
         isPouring = false;
         currentPour = null;
         pouringSound.stop();
@@ -200,9 +274,9 @@ function draw() {
       pouringSound.stop();
 
       fill('red');
-      textSize(24);
+      textSize(max(24 * s, 14));
       textAlign(CENTER, CENTER);
-      text("Beaker is full! Cannot add more liquid.", width / 2, height - 100);
+      text("Beaker is full! Cannot add more liquid.", width / 2, height - 60 * s);
     }
   }
 
@@ -233,68 +307,60 @@ function draw() {
 
   drawLitmusPaper(litmus.x, litmus.y, litmus.w, litmus.h, litmusPH, isLitmusInLiquid);
   fill(0);
-  textSize(12);
+  textSize(max(12 * s, 8));
   textAlign(CENTER, BOTTOM);
-  text("Litmus Paper", litmus.x + litmus.w / 2, litmus.y - 5);
+  text("Litmus Paper", litmus.x + litmus.w / 2, litmus.y - 3);
 
-  let meterX = 630;
-  let meterY = 540;
-  let meterRadius = 120;
-  let phForMeter = (isLitmusInLiquid && beakerContents.length > 0) ? averagePH(beakerContents) : null;
- 
-  // Detect the moment litmus just went into liquid (new event)
-if (isLitmusInLiquid && litmusPH !== null && popUpTimer <= 0) {
-  if (litmusPH < 7) {
-    popUpMessage = "Liquid is acidic";
-  } else if (litmusPH > 7) {
-    popUpMessage = "Liquid is basic";
-  } else if (litmusPH == 7) {
-    popUpMessage = "Liquid is neutral";
-  }
-  popUpTimer = popUpDuration;
-}
-
-// Decrease popup timer
-// Draw popup text with blue box and yellow text on right side of beaker
-// Draw popup text with blue box and yellow text on right side of beaker
-if (popUpTimer > 0) {
-  popUpTimer--;
-
-  let popupX = 330 + 120 / 2 + 190;
-  let popupY = 300 + 100;
-
-  push();
-  rectMode(CENTER);
-  textAlign(CENTER, CENTER);
-  textSize(24);
-
-  let scaleAmt = map(popUpTimer, 0, popUpDuration, 1, 1.5);
-
-  translate(popupX, popupY);
-  scale(scaleAmt);
-
-  noStroke();
-
-  let popupColor = 'white';
-  if (litmusPH !== null) {
-    if (litmusPH < 7) popupColor = 'red';
-    else if (litmusPH > 7) popupColor = 'blue';
-    else if (litmusPH == 7) popupColor = "yellow";
+  // Popup
+  if (isLitmusInLiquid && litmusPH !== null && popUpTimer <= 0) {
+    if (litmusPH < 7) {
+      popUpMessage = "Liquid is acidic";
+    } else if (litmusPH > 7) {
+      popUpMessage = "Liquid is basic";
+    } else if (litmusPH == 7) {
+      popUpMessage = "Liquid is neutral";
+    }
+    popUpTimer = popUpDuration;
   }
 
-  fill(popupColor);
-  rect(0, 0, 220, 50, 10);
+  if (popUpTimer > 0) {
+    popUpTimer--;
 
-  fill('white');
-  text(popUpMessage, 0, 0);
+    let popupX = min(layout.popupX, width - 120 * s);
+    let popupY = layout.popupY;
 
-  pop();
+    push();
+    rectMode(CENTER);
+    textAlign(CENTER, CENTER);
+    textSize(max(24 * s, 12));
+
+    let scaleAmt = map(popUpTimer, 0, popUpDuration, 1, 1.5);
+    translate(popupX, popupY);
+    scale(scaleAmt);
+
+    noStroke();
+
+    let popupColor = 'white';
+    if (litmusPH !== null) {
+      if (litmusPH < 7) popupColor = 'red';
+      else if (litmusPH > 7) popupColor = 'blue';
+      else if (litmusPH == 7) popupColor = "yellow";
+    }
+
+    fill(popupColor);
+    rect(0, 0, max(220 * s, 130), max(50 * s, 30), 10);
+
+    fill('white');
+    text(popUpMessage, 0, 0);
+
+    pop();
+  }
 }
 
-}
 function drawBeaker(cx, topY, w, h) {
-  const bottomY = topY + h;
-  const ellipseHeight = 30;
+  let s = layout.scale;
+  let bottomY = topY + h;
+  let ellipseHeight = 30 * s;
   stroke(0);
   strokeWeight(2);
   fill(240, 240, 255, 80);
@@ -313,20 +379,21 @@ function drawBeaker(cx, topY, w, h) {
 
   noStroke();
   fill(0);
-  textSize(16);
+  textSize(max(16 * s, 10));
   textAlign(CENTER, TOP);
-  text("Glass", cx, bottomY + 10);
+  text("Glass", cx, bottomY + 5);
 }
 
 function drawBeakerMarks(cx, topY, w, h) {
-  const bottomY = topY + h;
-  const ellipseHeight = 30;
+  let s = layout.scale;
+  let bottomY = topY + h;
+  let ellipseHeight = 30 * s;
   stroke(0);
   strokeWeight(1);
   let marks = 10;
   for (let i = 1; i < marks; i++) {
     let y = map(i, 0, marks, topY + ellipseHeight / 2, bottomY - ellipseHeight / 2);
-    line(cx - w / 2 + 5, y, cx - w / 2 + 20, y);
+    line(cx - w / 2 + 5, y, cx - w / 2 + 15, y);
   }
 }
 
@@ -350,72 +417,109 @@ function drawLitmusPaper(x, y, w, h, ph, inLiquid) {
 }
 
 function drawPouringGlass(liquid, progress) {
-  let glassX = 330;
-  let glassY = 260 - progress;
+  let s = layout.scale;
+  let glassX = layout.beakerCx;
+  let glassY = layout.beakerTopY - 40 * s - progress;
   push();
   translate(glassX, glassY);
   rotate(radians(-45));
   stroke(100);
   strokeWeight(1.5);
   fill(255, 255, 255, 80);
+  let gw = 15 * max(s, 0.6);
+  let gh = 30 * max(s, 0.6);
   beginShape();
-  vertex(-15, -30);
-  vertex(-20, 30);
-  vertex(20, 30);
-  vertex(15, -30);
-  bezierVertex(10, -35, -10, -35, -15, -30);
+  vertex(-gw, -gh);
+  vertex(-gw - 5, gh);
+  vertex(gw + 5, gh);
+  vertex(gw, -gh);
+  bezierVertex(gw - 5, -gh - 5, -gw + 5, -gh - 5, -gw, -gh);
   endShape(CLOSE);
 
   fill(liquid.color);
   noStroke();
-  quad(-13, 5, -18, 28, 18, 28, 13, 5);
+  quad(-gw + 2, 5, -gw - 2, gh - 2, gw + 2, gh - 2, gw - 2, 5);
   pop();
 
   if (progress > 10) {
     stroke(liquid.color);
-    strokeWeight(6);
-    line(glassX, glassY + 30, 330, 300);
+    strokeWeight(max(6 * s, 3));
+    line(glassX, glassY + gh, layout.beakerCx, layout.beakerTopY);
   }
 }
 
+// Mouse events
 function mousePressed() {
-  items.forEach(item => {
-    // Only add to pourQueue if there is space in the beaker
-    let currentHeight = beakerContents.length * liquidHeight;
-    if (dist(mouseX, mouseY, item.x + 20, item.y + 20) < 20 && currentHeight < maxLiquidHeight) {
-      pourQueue.push(item);
-      draggingItem = item;
-      dragOffsetX = mouseX - item.x;
-      dragOffsetY = mouseY - item.y;
-    }
-  });
-
-  if (
-    mouseX > litmus.x && mouseX < litmus.x + litmus.w &&
-    mouseY > litmus.y && mouseY < litmus.y + litmus.h
-  ) {
-    litmus.dragging = true;
-    litmus.offsetX = mouseX - litmus.x;
-    litmus.offsetY = mouseY - litmus.y;
-  }
+  handlePress(mouseX, mouseY);
 }
-
 
 function mouseDragged() {
-  if (litmus.dragging) {
-    litmus.x = mouseX - litmus.offsetX;
-    litmus.y = mouseY - litmus.offsetY;
-  }
-  
+  handleDrag(mouseX, mouseY);
 }
+
 function mouseReleased() {
+  handleRelease();
+}
+
+// Touch events
+function touchStarted() {
+  if (touches.length > 0) {
+    handlePress(touches[0].x, touches[0].y);
+  }
+  return false;
+}
+
+function touchMoved() {
+  if (touches.length > 0) {
+    handleDrag(touches[0].x, touches[0].y);
+  }
+  return false;
+}
+
+function touchEnded() {
+  handleRelease();
+  return false;
+}
+
+function handlePress(px, py) {
+  // Check if tapped on a liquid item
+  for (let i = 0; i < items.length; i++) {
+    let item = items[i];
+    let currentHeight = beakerContents.length * liquidHeight;
+    if (px > item.x - 5 && px < item.x + item.w + 80 &&
+        py > item.y - 5 && py < item.y + item.h + 5 &&
+        currentHeight < maxLiquidHeight) {
+      pourQueue.push(item);
+      return;
+    }
+  }
+
+  // Check if tapped on litmus paper
+  if (
+    px > litmus.x - 10 && px < litmus.x + litmus.w + 10 &&
+    py > litmus.y - 10 && py < litmus.y + litmus.h + 10
+  ) {
+    litmus.dragging = true;
+    litmus.offsetX = px - litmus.x;
+    litmus.offsetY = py - litmus.y;
+  }
+}
+
+function handleDrag(px, py) {
+  if (litmus.dragging) {
+    litmus.x = px - litmus.offsetX;
+    litmus.y = py - litmus.offsetY;
+  }
+}
+
+function handleRelease() {
   litmus.dragging = false;
   draggingItem = null;
 }
 
 function averageColor(colors) {
   let r = 0, g = 0, b = 0;
-  colors.forEach(c => {
+  colors.forEach(function(c) {
     let col = color(c);
     r += red(col);
     g += green(col);
@@ -429,6 +533,6 @@ function averageColor(colors) {
 
 function averagePH(contents) {
   let sum = 0;
-  contents.forEach(c => sum += c.pH);
+  contents.forEach(function(c) { sum += c.pH; });
   return sum / contents.length;
 }
